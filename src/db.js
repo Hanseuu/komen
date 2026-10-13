@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createClient } from '@libsql/client';
+import { createClient as createLibsqlClient } from '@libsql/client';
+import { createClient as createTursoClient } from '@tursodatabase/serverless/compat';
 import { config } from './config.js';
 
 /**
@@ -30,9 +31,22 @@ if (remoteUrl) {
   url = `file:${config.dbPath}`;
 }
 
-export const client = createClient(
-  isRemote ? { url, authToken } : { url }
-);
+/*
+ * Turso menyediakan dua mesin database dengan skema URL berbeda:
+ *
+ *   turso://...   -> mesin Turso baru, dilayani @tursodatabase/serverless
+ *   libsql://...  -> database libSQL,   dilayani @libsql/client
+ *
+ * Keduanya didukung di sini dengan memilih klien sesuai skema URL, sehingga
+ * aplikasi tetap jalan apa pun jenis database yang Anda buat. Modul "compat"
+ * pada paket Turso memaparkan API yang sama seperti @libsql/client
+ * (execute, batch, transaction, executeMultiple), jadi sisa kode tidak berubah.
+ */
+export const engine = url.startsWith('turso://') ? 'turso' : 'libsql';
+
+export const client = engine === 'turso'
+  ? createTursoClient({ url, authToken })
+  : createLibsqlClient(isRemote ? { url, authToken } : { url });
 
 /* -------------------------------------------------------------------------- */
 /* Normalisasi argumen                                                        */

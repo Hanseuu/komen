@@ -19,8 +19,21 @@ Vercel (serverless)  ·  Turso / libSQL (database)  ·  Express 5  ·  Frontend 
 1. Daftar di [turso.tech](https://turso.tech) — gratis, tanpa kartu kredit.
 2. Buat database baru (pilih region terdekat, mis. Singapore).
 3. Catat dua nilai ini:
-   - **Database URL** — berbentuk `libsql://nama-db-anda.turso.io`
+   - **Database URL** — `libsql://...` atau `turso://...` (keduanya didukung)
    - **Auth token** — string panjang dimulai `eyJ...`
+
+Lewat [Turso CLI](https://docs.turso.tech/cli/introduction):
+
+```bash
+turso db create komen              # database libSQL  -> URL libsql://
+turso db show --url komen          # ambil Database URL
+turso db tokens create komen       # ambil Auth token
+```
+
+> **Dua mesin database.** Turso menyediakan mesin `libsql://` dan mesin baru
+> `turso://` (dibuat dengan `--tursodb`). Aplikasi ini **mendukung keduanya** —
+> `src/db.js` memilih driver yang tepat berdasarkan skema URL. Yang sudah diuji
+> menyeluruh di sini adalah jalur **libSQL**, jadi itu pilihan yang disarankan.
 
 ### 2. Import ke Vercel
 
