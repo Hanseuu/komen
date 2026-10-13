@@ -2,7 +2,7 @@ import path from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { config, ROOT } from './config.js';
-import { migrate, isRemote } from './db.js';
+import { migrate, isRemote, engine } from './db.js';
 import { attachUser, requireAuth, requireRole } from './lib/auth.js';
 import { HttpError, asyncHandler } from './lib/helpers.js';
 import { schedulerMiddleware } from './scheduler.js';
@@ -62,28 +62,35 @@ export function createApp() {
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
   app.use(cookieParser());
 
-  // Berkas statis (HTML, CSS, JS frontend).
+  /*
+   * Berkas statis (HTML, CSS, JS frontend) dilayani lebih dulu dan
+   * TIDAK menyentuh database. Penting untuk serverless: membuka halaman
+   * tidak boleh menunggu koneksi database sama sekali.
+   */
   app.use(express.static(config.publicDir, { extensions: ['html'] }));
 
-  // Siapkan database sebelum rute apa pun menyentuhnya.
-  app.use(asyncHandler(async (_req, _res, next) => {
-    await ensureReady();
-    next();
-  }));
-
-  app.use(attachUser);
-
-  /* ---------------------------------------------------------------- health */
+  /* ------------------------------------------------- health (tanpa database) */
   app.get('/api/health', (_req, res) => {
     res.json({
       ok: true,
       app: 'Komen (Kos Manajemen)',
       kost: config.kost.name,
       time: new Date().toISOString(),
-      database: isRemote ? 'turso' : path.relative(ROOT, config.dbPath),
+      database: isRemote ? `turso (${engine})` : path.relative(ROOT, config.dbPath),
+      region: process.env.VERCEL_REGION || null,
       providers: { whatsapp: config.wa.provider, payment: config.payment.provider },
     });
   });
+
+  /*
+   * Penyiapan database hanya dipasang pada /api — jadi hanya permintaan data
+   * yang menunggunya, bukan pemuatan halaman.
+   */
+  app.use('/api', asyncHandler(async (_req, _res, next) => {
+    await ensureReady();
+    next();
+  }));
+  app.use('/api', attachUser);
 
   /* ------------------------------------------------------------------ api */
   app.use('/api/auth', authRoutes);
@@ -120,10 +127,16 @@ export function createApp() {
     res.status(404).json({ error: 'Endpoint tidak ditemukan.' });
   });
 
-  // Semua rute non-API diarahkan ke halaman login (SPA memakai hash routing).
+  /*
+   * Semua rute non-API diarahkan ke halaman login (SPA memakai hash routing).
+   * Tidak menyentuh database, dan kegagalan baca berkas dilaporkan jelas
+   * daripada menggantung.
+   */
   app.use((req, res, next) => {
     if (req.method !== 'GET') return next();
-    return res.sendFile(path.join(config.publicDir, 'index.html'));
+    return res.sendFile(path.join(config.publicDir, 'index.html'), (err) => {
+      if (err) next(err);
+    });
   });
 
   /* -------------------------------------------------------- error handler */

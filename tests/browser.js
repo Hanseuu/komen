@@ -97,8 +97,10 @@ const server = spawn(process.execPath, [path.join(ROOT, 'src', 'server.js')], {
     PORT: String(PORT),
     NODE_ENV: 'test',
     DB_PATH: path.join(tmp, 'ui.db'),
-    TURSO_DATABASE_URL: '',
-    TURSO_AUTH_TOKEN: '',
+    // Teruskan kredensial Turso bila disetel, agar suite bisa dijalankan
+    // terhadap database remote sungguhan; bila tidak, pakai berkas lokal.
+    TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL || '',
+    TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN || '',
     WA_PROVIDER: 'mock',
     PAYMENT_PROVIDER: 'mock',
   },

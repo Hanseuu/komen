@@ -35,10 +35,26 @@ turso db tokens create komen       # ambil Auth token
 > `src/db.js` memilih driver yang tepat berdasarkan skema URL. Yang sudah diuji
 > menyeluruh di sini adalah jalur **libSQL**, jadi itu pilihan yang disarankan.
 
-### 2. Import ke Vercel
+### 2. ⚠️ Samakan region fungsi dengan region database
+
+Vercel menjalankan fungsi di **Washington DC (`iad1`)** secara bawaan. Bila database
+Turso Anda berada di Singapura, setiap query harus menyeberangi Pasifik — ini penyebab
+umum error `FUNCTION_INVOCATION_TIMEOUT` (504).
+
+[`vercel.json`](vercel.json) di repositori ini sudah menyetel region ke **`sin1`**
+(Singapura). **Bila database Turso Anda dibuat di region lain, ubah satu baris ini:**
+
+```json
+"regions": ["sin1"]
+```
+
+Kode region lain: `iad1` (AS Timur), `sfo1` (AS Barat), `fra1` (Frankfurt),
+`syd1` (Sydney). Paket Hobby hanya boleh satu region.
+
+### 3. Import ke Vercel
 
 1. Buka [vercel.com](https://vercel.com) → **Add New** → **Project**.
-2. Pilih repositori ini. Vercel membaca [`vercel.json`](vercel.json) secara otomatis —
+2. Pilih repositori ini. Vercel membaca `vercel.json` secara otomatis —
    framework preset biarkan **Other**, tidak perlu build command.
 3. Pada bagian **Environment Variables**, isi dua variabel berikut:
 
@@ -49,10 +65,24 @@ turso db tokens create komen       # ambil Auth token
 
 4. Klik **Deploy**.
 
-Kunjungan pertama akan membuat skema tabel sekaligus mengisi data demo secara otomatis
-(butuh beberapa detik), lalu aplikasi siap dipakai di `https://nama-proyek-anda.vercel.app`.
+Kunjungan pertama ke salah satu halaman akan membuat skema tabel sekaligus mengisi data
+demo. Penyemaian hanya butuh **8 perjalanan ke database** (semuanya dikirim dalam
+beberapa `batch`), jadi selesai dalam hitungan detik.
 
-### 3. Login
+> Pemuatan halaman **tidak menyentuh database sama sekali** — hanya permintaan `/api/*`
+> yang melakukannya. Jadi situs tetap terbuka meski database sedang bermasalah.
+
+### Menyemai data dari komputer sendiri (opsional)
+
+Bila ingin database sudah terisi sebelum deploy pertama:
+
+```bash
+TURSO_DATABASE_URL=libsql://nama-db-anda.turso.io \
+TURSO_AUTH_TOKEN=token-anda \
+npm run seed
+```
+
+### 4. Login
 
 | Peran | Email | Password |
 |---|---|---|
@@ -239,3 +269,32 @@ TURSO_DATABASE_URL=http://127.0.0.1:8099 npm run smoke
   gambar dan ukurannya.
 - Webhook pembayaran diverifikasi dengan **HMAC-SHA256** dan bersifat idempoten.
 - Endpoint cron dilindungi `CRON_SECRET`.
+
+---
+
+## Pemecahan masalah di Vercel
+
+Cek **Vercel → proyek Anda → Logs**, lalu cocokkan dengan tabel berikut.
+
+| Gejala | Penyebab & solusi |
+|---|---|
+| **504 `FUNCTION_INVOCATION_TIMEOUT`** | Region fungsi jauh dari database. Lihat log: bila tertulis *"Routed to Washington, D.C., USA (iad1)"* sementara database Anda di Singapura, setel `"regions": ["sin1"]` di `vercel.json` lalu **Redeploy** |
+| `URL scheme is not supported` | URL dan token tertukar, atau token ditempel ke `TURSO_DATABASE_URL` |
+| `401` pada log | Token Turso kedaluwarsa atau tersalin tidak lengkap — buat token baru |
+| Halaman terbuka tapi login gagal | Database belum tersemai. Buka `/api/health` untuk memastikan koneksi, atau jalankan `npm run seed` dari komputer |
+| Mengubah environment variable tapi tidak berubah | Vercel perlu **Redeploy** agar perubahan env berlaku |
+
+**Pemeriksaan cepat:** buka `https://aplikasi-anda.vercel.app/api/health`. Endpoint ini
+tidak menyentuh database, jadi selalu merespons cepat, dan menampilkan region fungsi
+serta jenis database yang terdeteksi:
+
+```json
+{
+  "ok": true,
+  "database": "turso (libsql)",
+  "region": "sin1",
+  "providers": { "whatsapp": "mock", "payment": "mock" }
+}
+```
+
+Bila `region` tidak sama dengan region database Turso Anda, itulah yang perlu diperbaiki.
