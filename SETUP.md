@@ -38,6 +38,48 @@ Harus muncul nomor versi seperti `v22.11.0`. Bila muncul pesan
 *"command not found"* atau *"bukan merupakan perintah"*, pemasangan belum
 berhasil atau terminal belum dibuka ulang.
 
+### ⚠️ Khusus Windows: izinkan npm berjalan di PowerShell
+
+Secara bawaan, PowerShell pada banyak komputer Windows menolak menjalankan
+skrip. Karena perintah `npm` sebenarnya berupa skrip (`npm.ps1`), muncul pesan:
+
+```
+npm : File C:\Program Files\nodejs\npm.ps1 cannot be loaded because
+running scripts is disabled on this system.
+```
+
+Ini **bukan** tanda pemasangan Node.js gagal — hanya aturan keamanan PowerShell.
+Pilih salah satu solusi berikut.
+
+**Solusi 1 — izinkan sekali, berlaku seterusnya (disarankan).**
+Tidak perlu hak administrator, dan hanya berlaku untuk akun Anda:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+Ketik `Y` lalu Enter. Tutup PowerShell, buka lagi, dan `npm` bisa dipakai
+seperti biasa. `RemoteSigned` adalah setelan yang disarankan Microsoft untuk
+komputer pengembang: skrip yang Anda buat sendiri boleh jalan, skrip yang
+diunduh dari internet tetap harus bertanda tangan.
+
+**Solusi 2 — pakai `npm.cmd`.**
+Tanpa mengubah pengaturan apa pun, tambahkan `.cmd` pada setiap perintah npm:
+
+```powershell
+npm.cmd install
+npm.cmd start
+```
+
+**Solusi 3 — pakai Command Prompt.**
+Tekan `Win`, ketik `cmd`, tekan Enter. Di sana `npm` berjalan normal tanpa
+perubahan pengaturan.
+
+> **Catatan berguna:** menjalankan aplikasinya sendiri tidak membutuhkan npm.
+> `node src/server.js` melakukan hal yang sama dengan `npm start`, dan `node`
+> adalah program biasa sehingga tidak pernah diblokir PowerShell. Hanya
+> `npm install` yang benar-benar memerlukan npm.
+
 ## A2. Ambil kodenya
 
 ### Cara cepat — tanpa Git
@@ -297,6 +339,7 @@ git push
 | Gejala | Penyebab & solusi |
 |---|---|
 | `node: command not found` | Node.js belum terpasang, atau terminal belum dibuka ulang setelah memasang |
+| **`npm.ps1 cannot be loaded because running scripts is disabled`** | Aturan keamanan PowerShell di Windows. Jalankan `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, atau pakai `npm.cmd` sebagai ganti `npm`. Lihat [bagian A1](#%EF%B8%8F-khusus-windows-izinkan-npm-berjalan-di-powershell) |
 | `npm install` gagal dengan error jaringan | Koneksi terputus; coba lagi, atau ganti jaringan |
 | `Error: listen EADDRINUSE :::3000` | Port 3000 dipakai aplikasi lain. Tutup aplikasi itu, atau jalankan `npx cross-env PORT=3001 npm start` |
 | `npm start` jalan tapi browser kosong | Pastikan alamatnya `http://localhost:3000` (bukan `https`) |
