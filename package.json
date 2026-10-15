@@ -11,7 +11,8 @@
     "reset": "node src/seed.js --reset",
     "smoke": "node tests/smoke.js",
     "browser": "node tests/browser.js",
-    "entry": "node tests/vercel-entry.js"
+    "entry": "node tests/vercel-entry.js",
+    "check": "node scripts/doctor.js"
   },
   "keywords": [
     "kos",

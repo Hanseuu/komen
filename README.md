@@ -113,19 +113,25 @@ Semua punya nilai bawaan — isi hanya bila ingin menyesuaikan. Lihat
 
 ## Menjalankan di komputer sendiri
 
-Tanpa Turso pun bisa — aplikasi otomatis memakai berkas SQLite lokal:
+Tanpa Turso pun bisa — aplikasi otomatis memakai berkas SQLite lokal, jadi tidak
+perlu akun atau internet:
 
 ```bash
 npm install
+npm run check      # periksa kesiapan (versi Node, dependensi, port)
 npm start          # http://localhost:3000
 ```
 
 Database dan data demo dibuat otomatis saat pertama kali dijalankan.
 
 ```bash
-npm run dev        # mode watch
+npm run dev        # muat ulang otomatis saat kode diubah
 npm run reset      # bangun ulang data demo dari nol
 ```
+
+> **Baru pertama kali?** **[SETUP.md](SETUP.md)** memuat panduan langkah demi langkah
+> dari nol — memasang Node.js, menjalankan di komputer sendiri, sampai menayangkan
+> di Vercel, lengkap dengan solusi masalah yang sering muncul.
 
 ---
 
