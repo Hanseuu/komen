@@ -2,6 +2,10 @@
    Halaman login — pemilihan peran (Pemilik Kos / Penyewa) lalu autentikasi
    ========================================================================== */
 
+// Versi statis: "API" dilayani langsung di peramban (lihat js/backend/).
+import { handleLocalRequest } from './backend/api.js';
+import { mountDemoBanner } from './demo-banner.js';
+
 const ROLE_LABELS = { owner: 'Pemilik Kos', tenant: 'Penyewa' };
 
 const form = document.getElementById('loginForm');
@@ -80,28 +84,13 @@ form.addEventListener('submit', async (e) => {
   submitBtn.innerHTML = '<span class="spinner"></span> Memproses…';
 
   try {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password, role }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      showError(data.error || `Login gagal (HTTP ${res.status}).`);
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = original;
-      return;
-    }
+    const data = await handleLocalRequest('POST', '/api/auth/login', { email, password, role });
 
     // Simpan profil ringkas agar shell aplikasi bisa langsung render.
     sessionStorage.setItem('komen:user', JSON.stringify(data.user));
-    location.replace(data.redirect || '/app.html');
+    location.replace(data.redirect ? data.redirect.replace(/^\//, '') : 'app.html');
   } catch (err) {
-    showError('Tidak dapat menghubungi server. Coba lagi sesaat.');
-    console.error(err);
+    showError(err?.message || 'Login gagal. Coba lagi sesaat.');
     submitBtn.disabled = false;
     submitBtn.innerHTML = original;
   }
@@ -110,6 +99,8 @@ form.addEventListener('submit', async (e) => {
 /* ------------------------------------------------------------------- init */
 
 (async function init() {
+  mountDemoBanner();
+
   // Pesan bila pengguna dialihkan ke sini karena sesi berakhir.
   if (sessionStorage.getItem('komen:expired')) {
     sessionStorage.removeItem('komen:expired');
@@ -120,12 +111,8 @@ form.addEventListener('submit', async (e) => {
 
   // Info kos pada panel kiri.
   try {
-    const res = await fetch('/api/auth/meta');
-    if (res.ok) {
-      const meta = await res.json();
-      const info = document.getElementById('kostInfo');
-      info.textContent = `${meta.kost.name} — ${meta.kost.address}`;
-    }
+    const meta = await handleLocalRequest('GET', '/api/auth/meta');
+    document.getElementById('kostInfo').textContent = `${meta.kost.name} — ${meta.kost.address}`;
   } catch {
     document.getElementById('kostInfo').textContent =
       'Kelola penyewa, tagihan, komplain, dan pengumuman dalam satu tempat.';
@@ -133,12 +120,9 @@ form.addEventListener('submit', async (e) => {
 
   // Bila sesi masih valid, langsung masuk ke aplikasi.
   try {
-    const res = await fetch('/api/auth/me', { credentials: 'include' });
-    if (res.ok) {
-      const { user } = await res.json();
-      sessionStorage.setItem('komen:user', JSON.stringify(user));
-      location.replace(user.role === 'owner' ? '/app.html#/owner/beranda' : '/app.html#/penyewa/beranda');
-    }
+    const { user } = await handleLocalRequest('GET', '/api/auth/me');
+    sessionStorage.setItem('komen:user', JSON.stringify(user));
+    location.replace(user.role === 'owner' ? 'app.html#/owner/beranda' : 'app.html#/penyewa/beranda');
   } catch {
     /* belum login - biarkan form tampil */
   }

@@ -1,18 +1,18 @@
 /* ==========================================================================
-   Pengujian UI nyata memakai Chromium headless.
+   Pengujian UI versi statis, memakai Chromium headless.
 
-   Menjalankan server pada database sementara, lalu menelusuri aplikasi
-   seperti pengguna: login dua peran, membuka semua halaman fitur,
-   membuat laporan dengan foto, membayar tagihan via QRIS, dan membuka chat.
-   Semua error konsol/JS dicatat dan membuat pengujian gagal.
+   Berkas proyek disajikan oleh server berkas statis sederhana (tanpa /api,
+   tanpa database), lalu aplikasi ditelusuri seperti pengguna sungguhan:
+   login dua peran, membuka semua halaman fitur, membuat laporan dengan foto,
+   membayar tagihan via QRIS, dan membuka chat. Seluruh error konsol/JS
+   dicatat dan membuat pengujian gagal.
 
-   Jalankan: npm run browser
+   Jalankan: cd tests && npm install && npm test
    ========================================================================== */
 
-import { spawn } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
@@ -32,7 +32,6 @@ const executablePath = CHROME_CANDIDATES.find((p) => {
   try { return fs.existsSync(p); } catch { return false; }
 });
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'komen-browser-'));
 const SHOTS = path.join(ROOT, '.kiro', 'artifacts', 'screenshots');
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -60,17 +59,49 @@ function check(label, ok, detail = '') {
 }
 const section = (t) => console.log(`\n${C.b(t)}`);
 
-async function waitForServer(timeoutMs = 25_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE}/api/health`);
-      if (res.ok) return true;
-    } catch { /* retry */ }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return false;
+/* ------------------------------------------------- server berkas statis */
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+};
+
+/**
+ * Meniru cara Vercel menyajikan folder statis: berkas apa adanya,
+ * "/" dipetakan ke index.html, dan tidak ada endpoint lain.
+ */
+function createStaticServer() {
+  return http.createServer((req, res) => {
+    const urlPath = decodeURIComponent(req.url.split('?')[0]);
+    const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
+    const file = path.join(ROOT, rel);
+
+    // Jangan pernah keluar dari folder proyek.
+    if (!file.startsWith(ROOT) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not found');
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
+      'Cache-Control': 'no-store',
+    });
+    fs.createReadStream(file).pipe(res);
+  });
 }
+
+const listen = (server) =>
+  new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(PORT, '127.0.0.1', resolve);
+  });
 
 const tinyPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
@@ -90,40 +121,17 @@ if (!executablePath) {
 console.log(C.d(`  browser     : ${executablePath}`));
 console.log(C.d(`  screenshots : ${path.relative(ROOT, SHOTS)}`));
 
-const server = spawn(process.execPath, [path.join(ROOT, 'src', 'server.js')], {
-  cwd: ROOT,
-  env: {
-    ...process.env,
-    PORT: String(PORT),
-    NODE_ENV: 'test',
-    DB_PATH: path.join(tmp, 'ui.db'),
-    // Teruskan kredensial Turso bila disetel, agar suite bisa dijalankan
-    // terhadap database remote sungguhan; bila tidak, pakai berkas lokal.
-    TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL || '',
-    TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN || '',
-    WA_PROVIDER: 'mock',
-    PAYMENT_PROVIDER: 'mock',
-  },
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
-let serverLog = '';
-server.stdout.on('data', (d) => { serverLog += d; });
-server.stderr.on('data', (d) => { serverLog += d; });
+const server = createStaticServer();
 
 let browser;
 const cleanup = () => {
   try { browser?.close(); } catch { /* ignore */ }
-  try { server.kill('SIGKILL'); } catch { /* ignore */ }
-  try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+  try { server.close(); } catch { /* ignore */ }
 };
 
 try {
-  if (!await waitForServer()) {
-    console.log(C.r('\n  Server gagal start.'));
-    console.log(C.d(serverLog));
-    cleanup();
-    process.exit(1);
-  }
+  await listen(server);
+  console.log(C.d(`  serving     : ${ROOT} → ${BASE}`));
 
   browser = await chromium.launch({
     executablePath,
@@ -173,6 +181,16 @@ try {
     await page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true });
   };
 
+  /**
+   * Pita "Mode Demo" menempel di bawah layar dan bisa menutupi tombol,
+   * sehingga disingkirkan setelah keberadaannya diperiksa sekali.
+   */
+  const hideDemoBanner = () =>
+    page.evaluate(() => {
+      document.getElementById('demoBanner')?.remove();
+      document.getElementById('demoBannerSpacer')?.remove();
+    });
+
   /** Navigasi SPA lewat hash + tunggu halaman selesai render. */
   async function goto(hash, waitFor) {
     await page.evaluate((h) => { window.location.hash = h; }, hash);
@@ -181,6 +199,7 @@ try {
       { timeout: 12_000 }
     );
     if (waitFor) await page.waitForSelector(waitFor, { timeout: 12_000 });
+    await hideDemoBanner();
     await page.waitForTimeout(220);
   }
 
@@ -206,9 +225,19 @@ try {
   check('Dua pilihan peran tersedia', (await page.locator('.role-option').count()) === 2);
   check('Peran Pemilik Kos tersedia', await page.locator('.role-option[data-role=owner]').isVisible());
   check('Peran Penyewa tersedia', await page.locator('.role-option[data-role=tenant]').isVisible());
-  check('Info kos dimuat dari server',
+  check('Info kos dimuat dari data lokal',
     (await page.textContent('#kostInfo')).includes('Kos Melati'), await page.textContent('#kostInfo'));
+
+  // Khas versi statis: pita mode demo + tombol reset.
+  check('Pita mode demo tampil', await page.locator('#demoBanner').isVisible());
+  check('Pita demo menyebut data hanya di peramban ini',
+    (await page.textContent('#demoBanner')).toLowerCase().includes('peramban ini'));
+  check('Tombol "Reset data demo" tersedia', await page.locator('#demoReset').isVisible());
+  check('Data demo tersimpan di localStorage',
+    await page.evaluate(() => Boolean(localStorage.getItem('komen:data:v1'))));
+
   await shot('01-login');
+  await hideDemoBanner();
 
   // Login gagal
   await page.click('.role-option[data-role=owner]');
@@ -238,6 +267,7 @@ try {
   await page.click('#loginSubmit');
   await page.waitForURL(/app\.html/, { timeout: 12_000 });
   await page.waitForSelector('#view .feature-card', { timeout: 12_000 });
+  await hideDemoBanner();
   check('Owner masuk ke aplikasi', page.url().includes('/owner/beranda'), page.url());
   check('Nama pengguna tampil di header',
     (await page.textContent('#userName')) === 'Bu Sulastri', await page.textContent('#userName'));
@@ -513,12 +543,17 @@ try {
   /* ================================================== AREA PENYEWA === */
   section('9. Beranda & fitur Penyewa');
 
-  await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }));
+  // Keluar lewat "backend" lokal, lalu login ulang sebagai penyewa.
+  await page.evaluate(() =>
+    import('/js/backend/api.js').then((m) => m.handleLocalRequest('POST', '/api/auth/logout', {})));
+  await page.evaluate(() => sessionStorage.clear());
   await page.goto(`${BASE}/index.html`, { waitUntil: 'networkidle' });
+  await hideDemoBanner();
   await page.click('.demo-chip[data-demo-role=tenant]');
   await page.click('#loginSubmit');
   await page.waitForURL(/app\.html/, { timeout: 12_000 });
   await page.waitForSelector('#view .feature-card', { timeout: 12_000 });
+  await hideDemoBanner();
 
   check('Penyewa masuk ke beranda penyewa', page.url().includes('/penyewa/beranda'), page.url());
   check('Header menampilkan nomor kamar penyewa',
@@ -764,8 +799,38 @@ try {
   check('Rute tidak dikenal menampilkan pesan ramah',
     (await page.locator('#view').innerText()).includes('tidak ditemukan'));
 
+  /* -------------------------------------------------- Reset demo ------ */
+  section('16. Reset data demo');
+
+  await page.goto(`${BASE}/index.html`, { waitUntil: 'networkidle' });
+  check('Data uji tersimpan sebelum reset',
+    await page.evaluate(() =>
+      (localStorage.getItem('komen:data:v1') || '').includes('Pengumuman Uji UI')));
+
+  page.once('dialog', (d) => d.accept());
+  await page.click('#demoReset');
+  await page.waitForFunction(
+    () => Boolean(localStorage.getItem('komen:data:v1')),
+    { timeout: 10_000 }
+  );
+  await page.waitForSelector('#loginForm', { timeout: 10_000 });
+
+  check('Data uji hilang setelah reset',
+    !(await page.evaluate(() =>
+      (localStorage.getItem('komen:data:v1') || '').includes('Pengumuman Uji UI'))));
+  check('Data demo dibuat ulang setelah reset',
+    await page.evaluate(() =>
+      (localStorage.getItem('komen:data:v1') || '').includes('owner@komen.id')));
+
+  await hideDemoBanner();
+  await page.click('.demo-chip[data-demo-role=owner]');
+  await page.click('#loginSubmit');
+  await page.waitForURL(/app\.html/, { timeout: 12_000 });
+  await page.waitForSelector('#view .feature-card', { timeout: 12_000 });
+  check('Aplikasi tetap bisa dipakai setelah reset', await bodyHas('Penyewa Aktif'));
+
   /* -------------------------------------------------- Error konsol ---- */
-  section('16. Kebersihan konsol browser');
+  section('17. Kebersihan konsol browser');
   check('Tidak ada error JavaScript selama penelusuran',
     consoleErrors.length === 0,
     consoleErrors.slice(0, 5).join(' || '));
@@ -774,9 +839,6 @@ try {
   failures.push('Pengujian terhenti karena error');
   console.log(C.r(`\n  Error: ${err.message}`));
   console.log(C.d(String(err.stack).split('\n').slice(0, 6).join('\n')));
-  if (serverLog.includes('[error]')) {
-    console.log(C.d(`\n--- log server ---\n${serverLog.split('[error]').slice(-1)[0].slice(0, 1200)}`));
-  }
 }
 
 console.log(`\n${'─'.repeat(60)}`);

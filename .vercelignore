@@ -1,0 +1,4 @@
+# Berkas ini hanya untuk pengembangan, tidak perlu diunggah ke Vercel.
+tests/
+.kiro/
+node_modules/
