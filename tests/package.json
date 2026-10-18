@@ -1,0 +1,12 @@
+{
+  "name": "komen-static-tests",
+  "private": true,
+  "type": "module",
+  "description": "Dependensi khusus pengujian. Sengaja dipisah dari root agar Vercel tetap melihat proyek ini sebagai situs statis biasa (tanpa langkah build).",
+  "scripts": {
+    "test": "node static-browser.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.0"
+  }
+}

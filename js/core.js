@@ -4,54 +4,36 @@
 
 /* ------------------------------------------------------------- API client */
 
-export class ApiError extends Error {
-  constructor(status, message, payload) {
-    super(message);
-    this.status = status;
-    this.payload = payload;
-  }
-}
+/**
+ * Versi statis ini tidak punya server: pemanggilan "API" dilayani oleh modul
+ * js/backend/ yang bekerja di atas localStorage. Bentuk pemanggilan dan hasil
+ * tetap sama seperti saat memakai server, sehingga halaman-halaman di
+ * js/pages/* tidak perlu tahu bedanya.
+ */
+import { ApiError } from './api-error.js';
+import { handleLocalRequest } from './backend/api.js';
+
+export { ApiError };
 
 async function request(method, url, body, { isForm = false } = {}) {
-  const opts = {
-    method,
-    credentials: 'include',
-    headers: {},
-  };
-
-  if (body !== undefined && body !== null) {
-    if (isForm) {
-      opts.body = body; // FormData: biarkan browser menentukan Content-Type
-    } else {
-      opts.headers['Content-Type'] = 'application/json';
-      opts.body = JSON.stringify(body);
-    }
-  }
-
-  let res;
+  let data;
   try {
-    res = await fetch(url, opts);
-  } catch {
-    throw new ApiError(0, 'Tidak dapat menghubungi server. Periksa koneksi Anda.');
-  }
-
-  // 401 di luar halaman login berarti sesi berakhir.
-  if (res.status === 401 && !url.includes('/auth/login')) {
-    if (!location.pathname.endsWith('/index.html') && location.pathname !== '/') {
-      sessionStorage.setItem('komen:expired', '1');
-      location.replace('/index.html');
+    data = await handleLocalRequest(method, url, body, isForm);
+  } catch (err) {
+    if (!(err instanceof ApiError)) {
+      console.error(err);
+      throw new ApiError(500, 'Terjadi kesalahan di dalam aplikasi. Muat ulang halaman.');
     }
-    throw new ApiError(401, 'Sesi Anda berakhir. Silakan login kembali.');
-  }
 
-  const text = await res.text();
-  let data = null;
-  if (text) {
-    try { data = JSON.parse(text); } catch { data = { raw: text }; }
-  }
-
-  if (!res.ok) {
-    throw new ApiError(res.status, data?.error || `Permintaan gagal (HTTP ${res.status}).`, data);
+    // 401 di luar halaman login berarti sesi berakhir.
+    if (err.status === 401 && !url.includes('/auth/login')) {
+      if (!location.pathname.endsWith('/index.html') && location.pathname !== '/') {
+        sessionStorage.setItem('komen:expired', '1');
+        location.replace('index.html');
+      }
+      throw new ApiError(401, 'Sesi Anda berakhir. Silakan login kembali.');
+    }
+    throw err;
   }
   return data;
 }
@@ -441,12 +423,16 @@ export function countdown(targetValue, onTick, onDone) {
 
 /* -------------------------------------------------------------- gambar ---- */
 
+/** Sisi terpanjang maksimal untuk gambar yang disimpan di localStorage. */
+const MAX_IMAGE_DIM = 1100;
+
 /**
  * Mengecilkan gambar di browser sebelum diunggah.
  *
- * Foto dari ponsel bisa 3-6 MB, sementara gambar di aplikasi ini disimpan di
- * database (Turso) dan dikirim lewat HTTP. Menyusutkannya di sisi klien
- * membuat unggahan jauh lebih cepat dan tetap jernih untuk dilihat pemilik kos.
+ * Foto dari ponsel bisa 3-6 MB, sementara pada versi statis gambar disimpan
+ * sebagai data URL di localStorage yang kuotanya hanya sekitar 5-10 MB.
+ * Karena itu penyusutannya lebih agresif daripada versi server, namun hasilnya
+ * tetap cukup jernih untuk dilihat pemilik kos.
  *
  * @param {File} file Berkas asli dari input
  * @param {object} opts
@@ -455,14 +441,17 @@ export function countdown(targetValue, onTick, onDone) {
  * @param {number} opts.maxBytes Target ukuran; kualitas diturunkan bila perlu
  * @returns {Promise<File>} Berkas hasil (atau berkas asli bila tidak perlu/gagal)
  */
-export async function shrinkImage(file, { maxDim = 1600, quality = 0.82, maxBytes = 1_400_000 } = {}) {
+export async function shrinkImage(file, { maxDim = 1000, quality = 0.7, maxBytes = 320_000 } = {}) {
   if (!file || !file.type?.startsWith('image/')) return file;
   // GIF bisa beranimasi; canvas akan membekukannya, jadi dilewati.
   if (file.type === 'image/gif') return file;
 
   try {
     const bitmap = await loadBitmap(file);
-    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    // Batas keras: pemanggil boleh meminta lebih kecil, tapi tidak lebih besar,
+    // karena seluruh gambar harus muat di kuota localStorage.
+    const limit = Math.min(maxDim, MAX_IMAGE_DIM);
+    const scale = Math.min(1, limit / Math.max(bitmap.width, bitmap.height));
     const w = Math.max(1, Math.round(bitmap.width * scale));
     const h = Math.max(1, Math.round(bitmap.height * scale));
 

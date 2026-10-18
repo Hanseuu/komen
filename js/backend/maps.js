@@ -1,14 +1,14 @@
-import { config } from '../config.js';
-
 /**
  * Pembuat tautan Google Maps untuk halaman "Fasilitas" pada sisi penyewa.
+ *
  * Kategori di luar fasilitas milik owner (laundry, minimarket, SPBU, dll)
  * akan membuka Google Maps saat diklik.
  */
 
-/** Tautan ke satu lokasi (pakai koordinat bila ada, kalau tidak pakai teks pencarian). */
-export function placeUrl({ name, address, lat, lng, maps_query: mapsQuery }) {
-  // Koordinat paling akurat; nama dipakai sebagai label pencarian bila tersedia.
+import { config } from './config.js';
+
+/** Tautan ke satu lokasi (pakai koordinat bila ada, kalau tidak teks pencarian). */
+export function placeUrl({ name, address, lat, lng, mapsQuery }) {
   if (lat && lng) {
     if (name) {
       return `https://www.google.com/maps/search/${encodeURIComponent(name)}/@${lat},${lng},17z`;
@@ -25,7 +25,7 @@ export function nearbySearchUrl(keyword) {
   return `https://www.google.com/maps/search/${encodeURIComponent(q)}/@${config.kost.lat},${config.kost.lng},16z`;
 }
 
-/** Tautan rute dari kos ke lokasi tujuan. */
+/** Tautan rute berjalan kaki dari kos ke lokasi tujuan. */
 export function directionsUrl({ name, address, lat, lng }) {
   const origin = `${config.kost.lat},${config.kost.lng}`;
   const destination = lat && lng ? `${lat},${lng}` : [name, address].filter(Boolean).join(' ');

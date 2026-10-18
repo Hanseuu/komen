@@ -4,6 +4,7 @@
 
 import { api, esc, initials, $, $$, toast, handleError, confirmDialog } from './core.js';
 import * as notif from './notifications.js';
+import { mountDemoBanner } from './demo-banner.js';
 
 /* ------------------------------------------------------------------- state */
 
@@ -238,7 +239,7 @@ async function logout() {
   } catch { /* lanjutkan walau gagal */ }
   notif.stopPolling();
   sessionStorage.clear();
-  location.replace('/index.html');
+  location.replace('index.html');
 }
 
 /* ------------------------------------------------------------------- init */
@@ -284,13 +285,14 @@ function bindShell() {
     app.user = user;
     sessionStorage.setItem('komen:user', JSON.stringify(user));
   } catch {
-    location.replace('/index.html');
+    location.replace('index.html');
     return;
   }
 
   renderUser();
   buildSidebar();
   bindShell();
+  mountDemoBanner();
 
   try {
     const meta = await api.get('/api/auth/meta');
