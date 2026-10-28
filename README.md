@@ -17,14 +17,13 @@ Karena aplikasi memakai ES module, berkas tidak bisa dibuka lewat `file://` —
 perlu disajikan oleh server berkas statis sederhana. Pilih salah satu:
 
 ```bash
-# Node.js (tanpa instalasi apa pun)
-npx serve .
+# Server kecil yang sudah ikut di repo ini (butuh Node.js, tanpa npm install)
+node tests/serve.js       # lalu buka http://localhost:4788
 
-# atau Python 3
+# atau, kalau lebih suka:
+npx serve .
 python -m http.server 8000
 ```
-
-Lalu buka `http://localhost:8000`.
 
 ### Akun demo
 

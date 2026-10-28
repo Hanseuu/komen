@@ -162,6 +162,31 @@ export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel
  */
 export const isLive = (el) => Boolean(el && el.isConnected);
 
+/**
+ * Menyiapkan tabel agar tetap terpakai di layar sempit:
+ *
+ *  - judul kolom dari <thead> disalin ke setiap sel sebagai `data-label`,
+ *    supaya CSS dapat menampilkan tabel sebagai daftar kartu di ponsel;
+ *  - tabel yang punya kolom aksi ditandai, supaya kolom itu bisa dibuat
+ *    menempel di tepi kanan saat tabel di-scroll menyamping.
+ *
+ * Dipanggil otomatis setiap kali isi halaman berubah (lihat js/app.js), jadi
+ * modul halaman tidak perlu menuliskan label apa pun.
+ */
+export function enhanceTables(root = document) {
+  root.querySelectorAll('table.table').forEach((table) => {
+    const heads = Array.from(table.querySelectorAll('thead th'), (th) => th.textContent.trim());
+
+    table.querySelectorAll('tbody tr').forEach((tr) => {
+      Array.from(tr.children).forEach((cell, i) => {
+        if (heads[i] && !cell.dataset.label) cell.dataset.label = heads[i];
+      });
+    });
+
+    table.classList.toggle('has-actions', Boolean(table.querySelector('tbody td.actions')));
+  });
+}
+
 /** Bangun elemen dari string HTML. */
 export function fromHtml(html) {
   const t = document.createElement('template');

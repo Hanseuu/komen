@@ -22,6 +22,8 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
+  '/usr/local/bin/chrome',
+  '/inner_container/opt/playwright/chromium-1232/chrome-linux64/chrome',
   '/opt/playwright/chromium-1232/chrome-linux64/chrome',
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
@@ -765,6 +767,29 @@ try {
     (await page.locator('#infoList').innerText()).includes('Harga Kamar'));
   await shot('30-penyewa-profil');
 
+  /* Ganti nama harus langsung terlihat di seluruh aplikasi. Sebelumnya hanya
+     tulisan nama di header yang diperbarui, sedangkan kartu profil, inisial
+     avatar, dan sapaan di beranda masih memakai nama lama. */
+  await clearToasts();
+  await page.fill('#pName', 'Putu Ardana Putra');
+  await page.click('#saveProfile');
+  await waitToast();
+
+  check('Kartu profil memakai nama baru',
+    (await page.textContent('#profileHead h2')) === 'Putu Ardana Putra',
+    await page.textContent('#profileHead h2'));
+  check('Nama di header ikut berubah',
+    (await page.textContent('#userName')) === 'Putu Ardana Putra');
+  check('Inisial avatar ikut berubah',
+    (await page.textContent('#userAvatar')) === 'PA', await page.textContent('#userAvatar'));
+
+  await goto('/penyewa/beranda', '#view .feature-card');
+  check('Sapaan di beranda ikut memakai nama baru', await bodyHas('Putu'));
+
+  await goto('/profil', '#profileForm');
+  check('Nama baru tetap tampil saat profil dibuka ulang',
+    (await page.textContent('#profileHead h2')) === 'Putu Ardana Putra');
+
   /* -------------------------------------------------- Responsif ------- */
   section('15. Tampilan ponsel & proteksi rute');
 
@@ -783,6 +808,46 @@ try {
   await page.waitForTimeout(450);
   check('Sidebar tertutup saat area gelap diklik',
     !(await page.evaluate(() => document.querySelector('#sidebar').classList.contains('is-open'))));
+
+  /* Lebar halaman tidak boleh melebihi layar: dulu tabel menarik seluruh
+     kolom isi hingga melewati tepi kanan. */
+  const noSideScroll = () =>
+    page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth <= 2);
+
+  await goto('/penyewa/tagihan', '#view .card');
+  check('Halaman Tagihan tidak meluber ke samping di ponsel', await noSideScroll());
+
+  const tabelPonsel = await page.evaluate(() => {
+    const td = document.querySelector('#view td[data-label]');
+    if (!td) return 'tidak ada tabel';
+    return getComputedStyle(td).display === 'block' && td.dataset.label ? 'bertumpuk' : 'mendatar';
+  });
+  check('Tabel tampil bertumpuk dengan label kolom di ponsel',
+    tabelPonsel === 'bertumpuk', tabelPonsel);
+
+  /* Deretan tab dulu hanya bisa di-scroll menyamping, sehingga tab terakhir
+     terpotong dan tampak tidak bisa diklik. */
+  await goto('/penyewa/fasilitas', '#view .tabs');
+  check('Semua tab terjangkau di ponsel (tidak ada yang terpotong)',
+    await page.evaluate(() => {
+      const lebar = document.documentElement.clientWidth;
+      return [...document.querySelectorAll('#view .tabs .tab')]
+        .every((t) => t.getBoundingClientRect().right <= lebar + 2);
+    }));
+
+  /* Daftar percakapan & ruang pesan harus bisa di-scroll sendiri; sebelumnya
+     isinya memanjang lalu terpotong oleh .chat-layout tanpa bisa digeser. */
+  await goto('/chat', '.chat-layout');
+  check('Kotak chat tidak memotong isinya di ponsel',
+    await page.evaluate(() => {
+      const el = document.querySelector('.chat-layout');
+      return el.scrollHeight - el.clientHeight <= 4;
+    }));
+  check('Kotak tulis pesan terlihat penuh di ponsel',
+    await page.evaluate(() => {
+      const r = document.querySelector('.chat-panel__form').getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= document.documentElement.clientHeight + 1;
+    }));
 
   await page.setViewportSize({ width: 1440, height: 900 });
 

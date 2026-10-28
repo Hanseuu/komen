@@ -2,7 +2,7 @@
    Shell aplikasi: autentikasi, navigasi, router hash, notifikasi
    ========================================================================== */
 
-import { api, esc, initials, $, $$, toast, handleError, confirmDialog } from './core.js';
+import { api, esc, initials, $, $$, toast, handleError, confirmDialog, enhanceTables } from './core.js';
 import * as notif from './notifications.js';
 import { mountDemoBanner } from './demo-banner.js';
 
@@ -131,7 +131,7 @@ async function renderRoute() {
     if (token !== renderToken) return; // navigasi lain sudah menyusul
     view.scrollTop = 0;
     window.scrollTo({ top: 0 });
-    await mod.render(view, { user: app.user, params, navigate, refreshBadges });
+    await mod.render(view, { user: app.user, params, navigate, refreshBadges, setUser });
   } catch (err) {
     if (token !== renderToken) return;
     console.error(err);
@@ -214,6 +214,19 @@ const closeSidebar = () => {
 
 /* ---------------------------------------------------------------- header */
 
+/**
+ * Satu-satunya pintu untuk mengubah profil yang sedang login.
+ *
+ * Dipakai halaman Profil setelah menyimpan perubahan. Tanpa ini, `app.user`
+ * tetap berisi data lama sehingga nama di header, inisial avatar, dan sapaan
+ * di beranda masih menampilkan nama sebelumnya sampai halaman dimuat ulang.
+ */
+export function setUser(user) {
+  app.user = user;
+  sessionStorage.setItem('komen:user', JSON.stringify(user));
+  renderUser();
+}
+
 function renderUser() {
   const u = app.user;
   $('#userName').textContent = u.name;
@@ -271,6 +284,26 @@ function bindShell() {
   });
 
   window.addEventListener('hashchange', renderRoute);
+  watchTables();
+}
+
+/**
+ * Tabel dirender ulang di banyak tempat (ganti filter, modal detail, hasil
+ * polling), jadi penyesuaian untuk layar sempit dipasang sekali lewat observer
+ * daripada dipanggil manual di setiap halaman.
+ */
+function watchTables() {
+  let queued = false;
+  const observer = new MutationObserver(() => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      enhanceTables(document);
+    });
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  enhanceTables(document);
 }
 
 (async function init() {
