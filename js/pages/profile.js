@@ -17,18 +17,7 @@ export async function render(view, ctx) {
       </div>
     </div>
 
-    <div class="profile-head">
-      ${avatar(u.name, u.avatarColor, 'avatar--lg')}
-      <div class="profile-head__text grow">
-        <h2>${esc(u.name)}</h2>
-        <p>${esc(u.email)}</p>
-        <div class="profile-head__badges">
-          <span class="badge">${u.role === 'owner' ? '🔑 Pemilik Kos' : '🛏️ Penyewa'}</span>
-          ${u.roomCode ? `<span class="badge">🚪 Kamar ${esc(u.roomCode)}</span>` : ''}
-          <span class="badge">${u.status === 'aktif' ? '✅ Aktif' : '⏸ Nonaktif'}</span>
-        </div>
-      </div>
-    </div>
+    <div class="profile-head" id="profileHead">${headHtml(u)}</div>
 
     <div class="grid grid--2">
       <!-- Informasi akun -->
@@ -136,12 +125,16 @@ export async function render(view, ctx) {
       const payload = Object.fromEntries(new FormData(e.currentTarget).entries());
       const res = await api.put('/api/auth/profile', payload);
 
-      // Perbarui cache profil & header.
-      sessionStorage.setItem('komen:user', JSON.stringify(res.user));
+      /*
+       * Satu sumber data: setUser() memperbarui app.user, cache sesi, serta
+       * nama/peran/inisial avatar di header sekaligus. Kartu profil di halaman
+       * ini dirender ulang agar tidak tertinggal menampilkan nama lama.
+       */
       ctx.user = res.user;
-      $('#userName').textContent = res.user.name;
-      toastOk(res.message);
+      ctx.setUser?.(res.user);
+      $('#profileHead').innerHTML = headHtml(res.user);
       renderInfo(res.user);
+      toastOk(res.message);
     } catch (err) {
       errBox.textContent = err.message;
       errBox.hidden = false;
@@ -212,6 +205,21 @@ export async function render(view, ctx) {
   });
 
   $('#logoutProfile').addEventListener('click', () => $('#logoutBtn').click());
+}
+
+/** Kartu biru berisi identitas akun; dipakai saat render & setelah menyimpan. */
+function headHtml(u) {
+  return `
+    ${avatar(u.name, u.avatarColor, 'avatar--lg')}
+    <div class="profile-head__text grow">
+      <h2>${esc(u.name)}</h2>
+      <p>${esc(u.email)}</p>
+      <div class="profile-head__badges">
+        <span class="badge">${u.role === 'owner' ? '🔑 Pemilik Kos' : '🛏️ Penyewa'}</span>
+        ${u.roomCode ? `<span class="badge">🚪 Kamar ${esc(u.roomCode)}</span>` : ''}
+        <span class="badge">${u.status === 'aktif' ? '✅ Aktif' : '⏸ Nonaktif'}</span>
+      </div>
+    </div>`;
 }
 
 function renderInfo(u) {
